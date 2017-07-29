@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
+	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kms"
 	"github.com/aws/aws-sdk-go/service/kms/kmsiface"
@@ -140,12 +141,22 @@ func (key MasterKey) createStsSession(config aws.Config, sess *session.Session) 
 }
 
 func (key MasterKey) createSession() (*session.Session, error) {
-	re := regexp.MustCompile(`^arn:aws:kms:(.+):([0-9]+):key/(.+)$`)
+	re := regexp.MustCompile(`^arn:(aws[\w-]*):kms:(.+):([0-9]+):key/(.+)$`)
 	matches := re.FindStringSubmatch(key.Arn)
 	if matches == nil {
 		return nil, fmt.Errorf("No valid ARN found in %q", key.Arn)
 	}
-	config := aws.Config{Region: aws.String(matches[1])}
+	validPart := false
+	for _, p := range endpoints.DefaultPartitions() {
+		if p.ID() == matches[1] {
+			validPart = true
+			break
+		}
+	}
+	if !validPart{
+		return nil, fmt.Errorf("Invalid ARN partition in %q", key.Arn)
+	}
+	config := aws.Config{Region: aws.String(matches[2])}
 	opts := session.Options{
 		Config:                  config,
 		AssumeRoleTokenProvider: stscreds.StdinTokenProvider,
